@@ -1,0 +1,195 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <style>
+      body, html {
+        margin: 0px;
+        width: 100%;
+        height: 100%;
+        padding: 0px;
+      }
+      canvas, img { display:block; border:2px solid black; }   
+    </style>
+  </head>
+  <audio id="myAudio" src="song.mp3"></audio>
+  <body>
+    <canvas id="myCanvas"></canvas>
+    <img>
+    <script>
+      var canvas = document.getElementById('myCanvas');
+      var context = canvas.getContext('2d');
+      canvas.width = window.innerWidth - 8;
+      canvas.height = window.innerHeight - 8;
+      var audio = new Audio('bounce.mp3');
+      var particles = {},
+          particleIndex = 0,
+          firstTime = 1,
+          settings = {
+            density: 20,
+            gravity: 0.25,
+          };
+      function Particle() {
+        this.x = Math.random() * canvas.width +1;
+        this.y = Math.random() * canvas.height +1;
+        this.particleSize = 10;
+        this.vx = Math.random() * 8 - 4 ;
+        this.vy = Math.random() *  4;
+        //this.x = canvas.width/2;
+        //this.y = canvas.height/2;
+        while(this.vx == 0 || this.vy == 0){
+          this.vx = Math.random() * 8 - 4 ;
+          this.vy = Math.random() * 4;
+        }
+        particleIndex ++;
+        particles[particleIndex] = this;
+        this.id = particleIndex;
+      }
+      Particle.prototype.draw = function() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.colour = '#' + Math.random().toString(16).substring(2, 8);
+        //this.vy += settings.gravity;
+        //this.vx += settings.gravity;
+        if ( this.x + this.particleSize >= window.innerWidth || this.x - this.particleSize <= 0 ) {
+          this.vx *= -1;
+          audio.play();
+        }
+        else if( this.y + this.particleSize >= window.innerHeight ||  this.y - this.particleSize <= 0){
+          this.vy *= -1;
+          audio.play();
+        }
+        for (var j in particles) {
+          if(this.x != particles[j].x && this.y != particles[j].y){
+            connect(this.x,this.y,particles[j].x,particles[j].y);
+          }          
+          if( Math.sqrt((this.x-particles[j].x) * (this.x-particles[j].x) + (this.y-particles[j].y) * (this.y-particles[j].y)) < 2){
+            delete this;  
+          }
+        }
+        context.clearRect(settings.leftWall, settings.groundLevel, canvas.width, canvas.height);
+        context.beginPath();
+        context.fillStyle = this.colour;
+        context.arc(this.x, this.y, this.particleSize, 0, Math.PI*2, true); 
+        context.closePath();
+        context.fill();
+      }
+      function connect( a, b, c, d){        
+        var dist = Math.sqrt((a-c) * (a-c) + (b-d) * (b-d));
+        if (dist <= 300) {
+          context.beginPath();
+          context.moveTo(a,b);
+          context.lineTo(c,d);
+          context.lineWidth = (400-dist)/800;
+          context.stroke();
+        }
+      }
+      setInterval(function() {
+        context.fillStyle = "rgba(255,255,255,1)";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        for (; firstTime <= settings.density ; firstTime++) {
+          new Particle();
+        }
+        for (var i in particles) {
+          
+          particles[i].draw();
+        }
+      }, 50);
+
+    // Audio Handling Part
+  // var ctx = new AudioContext();
+  // var song = document.getElementById('myAudio');
+  // var audioSrc = ctx.createMediaElementSource(song);
+  // var analyser = ctx.createAnalyser();
+  // audioSrc.connect(analyser);
+  // audioSrc.connect(ctx.destination);
+  // var frequencyData = new Uint8Array(analyser.frequencyBinCount);
+  // function renderFrame() {
+  //    requestAnimationFrame(renderFrame);
+  //    analyser.getByteFrequencyData(frequencyData);
+  //    //console.log(frequencyData)
+  // }
+  // song.play();
+  // renderFrame();
+    var audioContext = new AudioContext();
+
+    console.log("audio is starting up ...");
+
+    var BUFF_SIZE = 16384;
+
+    var audioInput = null,
+        microphone_stream = null,
+        gain_node = null,
+        script_processor_node = null,
+        script_processor_fft_node = null,
+        analyserNode = null;
+
+    if (!navigator.getUserMedia)
+            navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia ||
+                          navigator.mozGetUserMedia || navigator.msGetUserMedia;
+
+    if (navigator.getUserMedia){
+
+        navigator.getUserMedia({audio:true}, 
+          function(stream) {
+              start_microphone(stream);
+          },
+          function(e) {
+            alert('Error capturing audio.');
+          }
+        );
+
+    } else { alert('getUserMedia not supported in this browser.'); };
+
+    function show_some_data(given_typed_array, num_row_to_display) {
+
+        var size_buffer = given_typed_array.length;
+        var index = 0;
+        var max_index = num_row_to_display;
+        var sum = 0;
+        for (; index < max_index && index < size_buffer; index += 1)
+            sum += given_typed_array[index];
+        console.log(sum);
+        settings.gravity = sum/1000;
+    }
+
+    function process_microphone_buffer(event) {  // PCM audio data in time domain
+        var i, N, inp, microphone_output_buffer;
+        microphone_output_buffer = event.inputBuffer.getChannelData(0); // just mono - 1 channel for now
+        show_some_data(microphone_output_buffer, 5, "from getChannelData");
+    }
+
+    function start_microphone(stream){
+      gain_node = audioContext.createGain();
+      gain_node.connect( audioContext.destination );
+      microphone_stream = audioContext.createMediaStreamSource(stream);
+      //microphone_stream.connect(gain_node); // comment out to disconnect output speakers
+                                            // ... everything else will work OK this
+                                            // eliminates possibility of feedback squealing
+                                            // or leave it in and turn down the volume
+
+      script_processor_node = audioContext.createScriptProcessor(BUFF_SIZE, 1, 1);
+      script_processor_node.onaudioprocess = process_microphone_buffer; // callback
+      microphone_stream.connect(script_processor_node); 
+
+      // --- setup FFT
+
+      script_processor_fft_node = audioContext.createScriptProcessor(2048, 1, 1);
+      script_processor_fft_node.connect(gain_node);
+      analyserNode = audioContext.createAnalyser();
+      analyserNode.smoothingTimeConstant = 0;
+      analyserNode.fftSize = 2048;
+      microphone_stream.connect(analyserNode)
+      analyserNode.connect(script_processor_fft_node);
+      script_processor_fft_node.onaudioprocess = function() { 
+        var fft_array = new Uint8Array(analyserNode.frequencyBinCount);
+        analyserNode.getByteFrequencyData(fft_array);
+
+        // draw the spectrogram
+        if (microphone_stream.playbackState == microphone_stream.PLAYING_STATE) {
+            show_some_data(fft_array, 5);
+        }
+      }
+    }
+    </script>
+  </body>
+</html>      
